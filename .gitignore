@@ -3,3 +3,9 @@ node_modules/
 .github_repo
 .env
 .env.*
+!.env.example
+.vercel
+.output
+dist/
+dev.log
+server.log

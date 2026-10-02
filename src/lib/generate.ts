@@ -1,5 +1,11 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
+import {
+  createChatCompletion,
+  LlmHttpError,
+  LlmMisconfigured,
+  resolveProvider,
+} from "@/lib/llm-client";
 import { STYLE_LABEL, type SceneBundle, type ScenePrompt } from "@/lib/studio";
 
 const generateInput = z.object({
@@ -81,19 +87,20 @@ function buildSystemPrompt(input: z.infer<typeof generateInput>): string {
   if (isVideo) {
     return `${identity}
 
-โหมดวิดีโอ — ผู้ใช้สร้างคลิปทีละตอน แล้วส่งคลิปที่ได้กลับไปเพื่อให้ AI สร้างคลิปถัดไป (คลิปใหม่มักยาวขึ้นและรวมคลิปก่อนหน้าไว้ด้วย เช่น 10 วินาที → 20 วินาที)
+โหมดวิดีโอ — ผู้ใช้สร้างคลิปทีละตอน แล้วส่งคลิปที่ได้กลับไปเพื่อให้ AI สร้างคลิปถัดไป (คลิปใหม่ยาวขึ้นและ "รวมคลิปก่อนหน้าไว้ตอนต้น" เช่น 10 วินาที → 20 วินาที)
 
 รูปแบบคำสั่งไทยที่ต้องใช้เป๊ะ:
 - ถ้าฉากนี้เริ่มจากรูปภาพต้นฉบับ: promptTh ขึ้นต้นด้วย
-  "จากรูปภาพนี้ ช่วยสร้างวีดีโอต่อเนื่องตามจินตนาการ ให้หน่อยครับ." ตามด้วยทิศทางฉากนั้น 2–4 ประโยค
+  "จากรูปภาพนี้ ช่วยสร้างวีดีโอต่อเนื่องตามจินตนาการให้หน่อยครับ." ตามด้วยทิศทางฉากนั้น 2–4 ประโยค
 - ถ้าฉากนี้ต่อจากคลิปก่อนหน้า: promptTh ขึ้นต้นด้วย
-  "จากคลิปวีดีโอนี้ ช่วยสร้างวีดีโอต่อเนื่องตามจินตนาการ ให้หน่อยครับ." ตามด้วยเหตุการณ์ใหม่ที่เกิดต่อจากเฟรมสุดท้าย
+  "จากคลิปวีดีโอนี้ ช่วยสร้างวีดีโอต่อเนื่องตามจินตนาการให้หน่อยครับ." ตามด้วยเหตุการณ์ใหม่ที่เกิดต่อจากเฟรมสุดท้าย
 
 promptEn ของทุกฉากต้องบอกชัด:
 - "continue seamlessly from the last frame of the previous clip" (ยกเว้นฉาก 1 ที่เริ่มจากภาพนิ่ง — ใช้ image-to-video: เริ่มจากภาพนี้ แล้วค่อยขยับ)
+- สำหรับฉากต่อเนื่อง: ระบุว่าผลลัพธ์ควรเป็น "one continuous ~20 second video that includes the previous clip at the start, then extends it"
 - camera move, weather, vehicle/character action, sound/dialogue ถ้ามี
 - สิ่งที่ต้องคงเดิม (identity lock)
-- ความยาวคลิปเป้าหมายประมาณ 8–10 วินาทีต่อฉาก
+- ความยาวคลิปเป้าหมายประมาณ 8–10 วินาทีต่อฉาก (ยกเว้นตอนรวมคลิปเดิม อาจยาวถึง ~20 วินาที)
 
 continuityNote: อธิบายสั้นๆ ว่าฉากนี้ต่อจากฉากก่อนอย่างไร และผู้ใช้ควรแนบสื่ออะไร (รูปต้นฉบับ หรือคลิปฉากที่เพิ่งสร้าง)
 
@@ -104,8 +111,8 @@ continuityNote: อธิบายสั้นๆ ว่าฉากนี้ต
   return `${identity}
 
 โหมดรูปภาพ — สตอรี่บอร์ดภาพนิ่งทีละใบ
-- promptTh ฉากแรกขึ้นต้น "ช่วยสร้างรูปภาพตามจินตนาการ ให้หน่อยครับ." (ถ้ามีรูปต้นฉบับ ให้ขึ้นต้น "จากรูปภาพนี้ ช่วยสร้างรูปภาพต่อเนื่องตามจินตนาการ ให้หน่อยครับ.")
-- ฉากถัดไปขึ้นต้น "ช่วยสร้างรูปภาพต่อเนื่องจากภาพก่อนหน้า ให้หน่อยครับ."
+- promptTh ฉากแรกขึ้นต้น "ช่วยสร้างรูปภาพตามจินตนาการให้หน่อยครับ." (ถ้ามีรูปต้นฉบับ ให้ขึ้นต้น "จากรูปภาพนี้ ช่วยสร้างรูปภาพต่อเนื่องตามจินตนาการให้หน่อยครับ.")
+- ฉากถัดไปขึ้นต้น "ช่วยสร้างรูปภาพต่อเนื่องจากภาพก่อนหน้าให้หน่อยครับ."
 - promptEn เป็น text-to-image ที่สมบูรณ์ในตัว (สร้างแยกใบได้) พร้อม identity lock
 - มุมกล้องหลากหลาย: wide, close-up, low angle, over-shoulder, aerial ตามจังหวะเรื่อง
 - continuityNote: ความสัมพันธ์กับภาพก่อนหน้า`;
@@ -191,14 +198,17 @@ function parseBundle(raw: string, sceneCount: number): SceneBundle {
 }
 
 export const getAiStatus = createServerFn({ method: "GET" }).handler(async () => {
-  return { available: Boolean(process.env.XAI_API_KEY) };
+  const provider = resolveProvider();
+  return {
+    available: Boolean(provider),
+    provider: provider?.id ?? null,
+  };
 });
 
 export const generateScenes = createServerFn({ method: "POST" })
   .validator((data: unknown) => generateInput.parse(data))
   .handler(async ({ data }): Promise<GenerateResult> => {
-    const apiKey = process.env.XAI_API_KEY;
-    if (!apiKey) {
+    if (!resolveProvider()) {
       return { ok: false, error: "ระบบ AI ยังไม่พร้อมในสภาพแวดล้อมนี้" };
     }
 
@@ -214,78 +224,52 @@ export const generateScenes = createServerFn({ method: "POST" })
       })),
     ];
 
-    const body = {
-      model: "grok-4.5",
-      temperature: 0.85,
-      max_tokens: 8192,
-      messages: [
-        { role: "system", content: buildSystemPrompt(data) },
-        { role: "user", content: userContent },
-      ],
-      response_format: {
-        type: "json_schema",
-        json_schema: SCENE_JSON_SCHEMA,
-      },
-    };
+    const messages = [
+      { role: "system" as const, content: buildSystemPrompt(data) },
+      { role: "user" as const, content: userContent },
+    ];
 
-    async function postChat(payload: unknown): Promise<Response> {
-      return fetch("https://api.x.ai/v1/chat/completions", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${apiKey}`,
-        },
-        body: JSON.stringify(payload),
+    async function complete(withSchema: boolean) {
+      return createChatCompletion(messages, {
+        temperature: 0.85,
+        maxTokens: 8192,
+        hasImages: data.images.length > 0,
+        responseFormat: withSchema
+          ? { type: "json_schema", json_schema: SCENE_JSON_SCHEMA }
+          : { type: "json_object" },
       });
     }
 
-    let res: Response;
+    let completion;
     try {
-      res = await postChat(body);
-      if (res.status === 400) {
-        const cloneText = await res.text();
-        res = await postChat({
-          ...body,
-          response_format: { type: "json_object" },
-        });
-        if (!res.ok && res.status === 400) {
-          return { ok: false, error: mapStatusError(400, cloneText.slice(0, 240)) };
+      try {
+        completion = await complete(true);
+      } catch (err) {
+        // Some models reject json_schema — retry with plain json_object.
+        if (err instanceof LlmHttpError && err.status === 400) {
+          completion = await complete(false);
+        } else {
+          throw err;
         }
       }
-    } catch {
-      return { ok: false, error: "เชื่อมต่อระบบ AI ไม่สำเร็จ กรุณาลองอีกครั้ง" };
-    }
-
-    const rawText = await res.text();
-    if (!res.ok) {
-      let detail = "";
-      try {
-        const errJson = JSON.parse(rawText) as {
-          error?: { message?: string };
-          message?: string;
-        };
-        detail = errJson.error?.message ?? errJson.message ?? "";
-      } catch {
-        detail = rawText.slice(0, 240);
+    } catch (err) {
+      if (err instanceof LlmMisconfigured) {
+        return { ok: false, error: "ระบบ AI ยังไม่พร้อมในสภาพแวดล้อมนี้" };
       }
-      return { ok: false, error: mapStatusError(res.status, detail) };
-    }
-
-    let content = "";
-    try {
-      const json = JSON.parse(rawText) as {
-        choices?: { message?: { content?: string } }[];
+      if (err instanceof LlmHttpError) {
+        return { ok: false, error: mapStatusError(err.status, err.detail) };
+      }
+      return {
+        ok: false,
+        error:
+          err instanceof Error && err.message
+            ? err.message
+            : "เชื่อมต่อระบบ AI ไม่สำเร็จ กรุณาลองอีกครั้ง",
       };
-      content = json.choices?.[0]?.message?.content ?? "";
-    } catch {
-      return { ok: false, error: "อ่านผลลัพธ์จาก AI ไม่สำเร็จ" };
-    }
-    if (!content) {
-      return { ok: false, error: "AI ไม่ได้ส่งข้อความกลับมา" };
     }
 
     try {
-      const bundle = parseBundle(content, data.sceneCount);
+      const bundle = parseBundle(completion.content, data.sceneCount);
       return { ok: true, bundle };
     } catch {
       return {

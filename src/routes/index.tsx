@@ -283,7 +283,20 @@ function StudioPage() {
     <div className="mx-auto max-w-[1400px] px-4 md:px-8 py-6 md:py-10">
       {!ai.available ? (
         <div className="mb-6 rounded-lg border border-border bg-secondary px-4 py-3.5 text-sm text-muted-foreground">
-          ระบบออกแบบพร้อมต์ยังไม่พร้อมในสภาพแวดล้อมนี้ — ลองใหม่เมื่อเชื่อมต่อ AI แล้ว
+          ระบบออกแบบพร้อมต์ยังไม่พร้อมในสภาพแวดล้อมนี้ — ตั้งค่า API key
+          (OPENROUTER_API_KEY หรือ XAI_API_KEY) แล้วลองใหม่
+        </div>
+      ) : ai.provider ? (
+        <div className="mb-6 rounded-lg border border-steel/25 bg-steel/5 px-4 py-3.5 text-sm text-muted-foreground flex items-center gap-2">
+          <span className="h-2 w-2 rounded-full bg-steel pulse-dot" />
+          เชื่อมต่อ AI แล้ว —{" "}
+          <span className="font-medium text-foreground">
+            {ai.provider === "openrouter"
+              ? "OpenRouter"
+              : ai.provider === "xai"
+                ? "xAI Grok"
+                : "Z.AI GLM"}
+          </span>
         </div>
       ) : null}
 
