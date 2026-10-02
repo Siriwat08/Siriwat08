@@ -2,6 +2,7 @@ import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import {
   createChatCompletion,
+  LlmEmpty,
   LlmHttpError,
   LlmMisconfigured,
   resolveProvider,
@@ -269,6 +270,15 @@ export const generateScenes = createServerFn({ method: "POST" })
     } catch (err) {
       if (err instanceof LlmMisconfigured) {
         return { ok: false, error: "ระบบ AI ยังไม่พร้อมในสภาพแวดล้อมนี้" };
+      }
+      if (err instanceof LlmEmpty) {
+        // All candidate models replied without content (reasoning models
+        // under heavy load) — tell the user to simply retry.
+        return {
+          ok: false,
+          error:
+            "โมเดล AI ตอบกลับมาเป็นค่าว่างชั่วคราว (เซิร์ฟเวอร์โหลดหนัก) กรุณากดออกแบบอีกครั้ง",
+        };
       }
       if (err instanceof LlmHttpError) {
         return { ok: false, error: mapStatusError(err.status, err.detail) };

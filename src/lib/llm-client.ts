@@ -47,16 +47,19 @@ function env(key: string): string | undefined {
 }
 
 // OpenRouter free-tier fallback lists — verified against the live catalog.
-// Text list favours large Thai-capable models; vision list needs image input.
+// Note: every current free model is a reasoning model, so the client caps
+// reasoning effort and falls through to the next model on empty responses.
 const OPENROUTER_TEXT_FALLBACKS = [
   "nvidia/nemotron-3-super-120b-a12b:free",
   "qwen/qwen3.8-27b:free",
+  "google/gemma-4-31b-it:free",
   "openrouter/free",
 ];
 
 const OPENROUTER_VISION_FALLBACKS = [
   "qwen/qwen3.8-27b:free",
   "google/gemma-4-31b-it:free",
+  "nvidia/nemotron-3-super-120b-a12b:free",
   "openrouter/free",
 ];
 
@@ -138,6 +141,8 @@ async function callOpenRouter(
         messages,
         options,
         model,
+        reasoningControl: true,
+        omitMaxTokens: true,
         extraHeaders: {
           "HTTP-Referer": env("APP_URL") || "https://promptreel.vercel.app",
           "X-Title": "PromptReel",
@@ -145,8 +150,14 @@ async function callOpenRouter(
       });
     } catch (err) {
       lastError = err;
-      if (err instanceof LlmHttpError && shouldFallback(err)) {
-        console.warn(`[llm] openrouter model unavailable: ${model} — trying next`);
+      // Retry the next model on: dead endpoints, rate limits, AND empty
+      // responses (common with free reasoning models under load).
+      const httpFallback = err instanceof LlmHttpError && shouldFallback(err);
+      const emptyFallback = err instanceof LlmEmpty;
+      if (httpFallback || emptyFallback) {
+        console.warn(
+          `[llm] openrouter model unusable: ${model} (${httpFallback ? "http" : "empty"}) — trying next`,
+        );
         continue;
       }
       throw err;
@@ -175,6 +186,10 @@ interface CompatibleCallArgs {
   options: ChatOptions;
   model: string;
   extraHeaders?: Record<string, string>;
+  /** OpenRouter-only: cap reasoning effort so thinking doesn't eat the token budget. */
+  reasoningControl?: boolean;
+  /** OpenRouter-only: omit max_tokens so the model can use its full completion budget. */
+  omitMaxTokens?: boolean;
 }
 
 async function callOpenAICompatible(args: CompatibleCallArgs): Promise<ChatCompletion> {
@@ -182,11 +197,18 @@ async function callOpenAICompatible(args: CompatibleCallArgs): Promise<ChatCompl
     model: args.model,
     messages: args.messages,
     temperature: args.options.temperature ?? 0.85,
-    max_tokens: args.options.maxTokens ?? 8192,
     stream: false,
   };
+  if (!args.omitMaxTokens) {
+    body.max_tokens = args.options.maxTokens ?? 8192;
+  }
   if (args.options.responseFormat) {
     body.response_format = args.options.responseFormat;
+  }
+  if (args.reasoningControl) {
+    // Unified OpenRouter param — ignored by non-reasoning models, but keeps
+    // reasoning models from burning the whole budget on hidden thinking.
+    body.reasoning = { effort: "low", exclude: true };
   }
 
   console.log(
@@ -205,6 +227,8 @@ async function callOpenAICompatible(args: CompatibleCallArgs): Promise<ChatCompl
       method: "POST",
       headers,
       body: JSON.stringify(body),
+      // Hard stop so a hung provider can't stall the serverless function.
+      signal: AbortSignal.timeout(115_000),
     });
   } catch {
     throw new LlmNetwork(`เชื่อมต่อ ${args.name} ไม่สำเร็จ`);
@@ -231,10 +255,32 @@ async function callOpenAICompatible(args: CompatibleCallArgs): Promise<ChatCompl
 
   try {
     const json = JSON.parse(rawText) as {
-      choices?: { message?: { content?: string } }[];
+      choices?: {
+        finish_reason?: string | null;
+        message?: {
+          content?: string | { type?: string; text?: string }[] | null;
+          reasoning?: string | null;
+        };
+      }[];
     };
-    const content = json.choices?.[0]?.message?.content ?? "";
+    const choice = json.choices?.[0];
+    const msg = choice?.message;
+    // Some providers return content as an array of typed parts.
+    let content = "";
+    if (typeof msg?.content === "string") {
+      content = msg.content;
+    } else if (Array.isArray(msg?.content)) {
+      content = msg.content
+        .map((p) => (typeof p === "string" ? p : (p?.text ?? "")))
+        .join("");
+    }
+    content = content.trim();
     if (!content) {
+      // Reasoning models often spend everything on thinking and leave
+      // `content` empty — log enough detail to debug from server logs.
+      console.warn(
+        `[llm] ${args.name} ${args.model} empty content · finish_reason=${choice?.finish_reason ?? "?"} · reasoning_preview=${String(msg?.reasoning ?? "none").slice(0, 200)}`,
+      );
       throw new LlmEmpty("AI ไม่ได้ส่งข้อความกลับมา");
     }
     return { content, raw: json, provider: args.name, model: args.model };
