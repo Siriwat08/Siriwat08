@@ -1,0 +1,36 @@
+{
+  "url": "http://127.0.0.1:8080/",
+  "viewports": {
+    "desktop": {
+      "width": 1280,
+      "height": 800,
+      "status": 200,
+      "title": "PromptReel",
+      "hasCanvas": false,
+      "bodyTextLen": 1107,
+      "bodyTextHash": "0b3174781d877d6305201d8f064dc6874dc7fe3cc18edf1a2f552890d044fb71",
+      "bodyTextPrefix": "PromptReel SCENE PROMPT STUDIO สตูดิโอ ประวัติ DIRECTOR CONSOLE ",
+      "horizontalOverflow": false,
+      "consoleErrors": [],
+      "pageErrors": [],
+      "screenshot": "/workspace/screenshots/app-builder-preview.png"
+    },
+    "mobile": {
+      "width": 390,
+      "height": 844,
+      "status": 200,
+      "title": "PromptReel",
+      "hasCanvas": false,
+      "bodyTextLen": 1091,
+      "bodyTextHash": "a31ea2673c3373a02980d4e92e781ba5a47d15931a580f7bc1e676c40c167031",
+      "bodyTextPrefix": "PromptReel SCENE PROMPT STUDIO DIRECTOR CONSOLE ออกแบบพร้อมต์ เป",
+      "horizontalOverflow": false,
+      "consoleErrors": [],
+      "pageErrors": [],
+      "screenshot": "/workspace/screenshots/app-builder-preview-mobile.png"
+    }
+  },
+  "brandWarnings": [],
+  "authWarnings": [],
+  "verdictFile": "/workspace/screenshots/app-builder-preview.json"
+}
