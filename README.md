@@ -89,8 +89,8 @@ public/
 
 ```
 OPENROUTER_API_KEY=sk-or-...        # แนะนำ — ภาษาไทยเพลง มีโมเดลฟรี
-# OPENROUTER_MODEL=inclusionai/ling-3.0-flash:free
-# OPENROUTER_VISION_MODEL=google/gemini-2.0-flash-exp:free
+# OPENROUTER_MODEL=nvidia/nemotron-3-super-120b-a12b:free
+# OPENROUTER_VISION_MODEL=qwen/qwen3.8-27b:free
 # XAI_API_KEY=xai-...               # ทางเลือก: xAI Grok
 # Z_AI_API_KEY=...                  # ทางเลือก: Z.AI GLM
 ```
@@ -99,6 +99,8 @@ OPENROUTER_API_KEY=sk-or-...        # แนะนำ — ภาษาไทย�
 
 > ลำดับการเลือก provider: **OpenRouter → xAI → Z.AI** (ตัวแรกที่มี key จะถูกใช้)
 > งานที่แนบรูป/เฟรมคลิปจะสลับไปใช้โมเดล vision โดยอัตโนมัติ (OpenRouter)
+> โมเดลฟรีบน OpenRouter หมุนเวียนบ่อย — แอปมี **fallback chain** สลับโมเดลให้เอง
+> เมื่อโมเดลใดถูกปิด ("No endpoints found") ไม่ต้องแก้โค้ดเพิ่ม
 
 ## 💻 Local Development
 

@@ -229,25 +229,39 @@ export const generateScenes = createServerFn({ method: "POST" })
       { role: "user" as const, content: userContent },
     ];
 
-    async function complete(withSchema: boolean) {
+    type FormatMode = "schema" | "object" | "none";
+    async function complete(mode: FormatMode) {
       return createChatCompletion(messages, {
         temperature: 0.85,
         maxTokens: 8192,
         hasImages: data.images.length > 0,
-        responseFormat: withSchema
-          ? { type: "json_schema", json_schema: SCENE_JSON_SCHEMA }
-          : { type: "json_object" },
+        responseFormat:
+          mode === "schema"
+            ? { type: "json_schema", json_schema: SCENE_JSON_SCHEMA }
+            : mode === "object"
+              ? { type: "json_object" }
+              : undefined,
       });
     }
 
     let completion;
     try {
       try {
-        completion = await complete(true);
+        completion = await complete("schema");
       } catch (err) {
         // Some models reject json_schema — retry with plain json_object.
         if (err instanceof LlmHttpError && err.status === 400) {
-          completion = await complete(false);
+          try {
+            completion = await complete("object");
+          } catch (err2) {
+            // Last resort: no response_format at all (prompt already
+            // demands JSON; parseBundle strips code fences).
+            if (err2 instanceof LlmHttpError && err2.status === 400) {
+              completion = await complete("none");
+            } else {
+              throw err2;
+            }
+          }
         } else {
           throw err;
         }

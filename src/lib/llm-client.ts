@@ -9,14 +9,9 @@
  * 2. XAI_API_KEY         → xAI Grok
  * 3. Z_AI_API_KEY        → Z.AI (GLM)
  *
- * OpenRouter: https://openrouter.ai — models commonly used:
- *   - inclusionai/ling-3.0-flash:free        (text, great Thai)
- *   - google/gemini-2.0-flash-exp:free       (vision — image input)
- *   - qwen/qwen2.5-vl-72b-instruct:free      (vision)
- *
- * xAI: https://api.x.ai — grok-4.5 (vision-capable)
- *
- * Z.AI: https://z.ai — glm-4.6, glm-4.5-flash
+ * OpenRouter free models rotate frequently — when a model disappears
+ * ("No endpoints found"), the client walks a fallback list automatically.
+ * Check https://openrouter.ai/models?max_price=0 for the current catalog.
  */
 
 export type ImagePart = { type: "image_url"; image_url: { url: string } };
@@ -51,12 +46,33 @@ function env(key: string): string | undefined {
   return v || undefined;
 }
 
+// OpenRouter free-tier fallback lists — verified against the live catalog.
+// Text list favours large Thai-capable models; vision list needs image input.
+const OPENROUTER_TEXT_FALLBACKS = [
+  "nvidia/nemotron-3-super-120b-a12b:free",
+  "qwen/qwen3.8-27b:free",
+  "openrouter/free",
+];
+
+const OPENROUTER_VISION_FALLBACKS = [
+  "qwen/qwen3.8-27b:free",
+  "google/gemma-4-31b-it:free",
+  "openrouter/free",
+];
+
+function openRouterCandidates(hasImages: boolean): string[] {
+  const override = hasImages ? env("OPENROUTER_VISION_MODEL") : env("OPENROUTER_MODEL");
+  const fallbacks = hasImages ? OPENROUTER_VISION_FALLBACKS : OPENROUTER_TEXT_FALLBACKS;
+  const list = override ? [override, ...fallbacks] : fallbacks;
+  return [...new Set(list)];
+}
+
 /** Which provider will be used with the current env — first match wins. */
 export function resolveProvider(): { id: ProviderId; model: string } | null {
   if (env("OPENROUTER_API_KEY")) {
     return {
       id: "openrouter",
-      model: env("OPENROUTER_MODEL") || "inclusionai/ling-3.0-flash:free",
+      model: openRouterCandidates(false)[0] as string,
     };
   }
   if (env("XAI_API_KEY")) {
@@ -80,23 +96,7 @@ export async function createChatCompletion(
   }
 
   if (provider.id === "openrouter") {
-    return callOpenAICompatible({
-      name: "openrouter",
-      url: "https://openrouter.ai/api/v1/chat/completions",
-      apiKey: env("OPENROUTER_API_KEY") as string,
-      apiKeyHeader: "Authorization",
-      messages,
-      options,
-      model: options.hasImages
-        ? env("OPENROUTER_VISION_MODEL") ||
-          env("OPENROUTER_MODEL") ||
-          "google/gemini-2.0-flash-exp:free"
-        : provider.model,
-      extraHeaders: {
-        "HTTP-Referer": env("APP_URL") || "https://promptreel.vercel.app",
-        "X-Title": "PromptReel",
-      },
-    });
+    return callOpenRouter(messages, options);
   }
 
   if (provider.id === "xai") {
@@ -104,7 +104,6 @@ export async function createChatCompletion(
       name: "xai",
       url: "https://api.x.ai/v1/chat/completions",
       apiKey: env("XAI_API_KEY") as string,
-      apiKeyHeader: "Authorization",
       messages,
       options,
       model: provider.model,
@@ -115,11 +114,55 @@ export async function createChatCompletion(
     name: "zai",
     url: "https://api.z.ai/api/paas/v4/chat/completions",
     apiKey: env("Z_AI_API_KEY") as string,
-    apiKeyHeader: "Authorization",
     messages,
     options,
     model: provider.model,
   });
+}
+
+// ---------- OpenRouter with model fallback chain ----------
+
+async function callOpenRouter(
+  messages: ChatMessage[],
+  options: ChatOptions,
+): Promise<ChatCompletion> {
+  const candidates = openRouterCandidates(Boolean(options.hasImages));
+  let lastError: unknown;
+
+  for (const model of candidates) {
+    try {
+      return await callOpenAICompatible({
+        name: "openrouter",
+        url: "https://openrouter.ai/api/v1/chat/completions",
+        apiKey: env("OPENROUTER_API_KEY") as string,
+        messages,
+        options,
+        model,
+        extraHeaders: {
+          "HTTP-Referer": env("APP_URL") || "https://promptreel.vercel.app",
+          "X-Title": "PromptReel",
+        },
+      });
+    } catch (err) {
+      lastError = err;
+      if (err instanceof LlmHttpError && shouldFallback(err)) {
+        console.warn(`[llm] openrouter model unavailable: ${model} — trying next`);
+        continue;
+      }
+      throw err;
+    }
+  }
+  throw lastError instanceof Error
+    ? lastError
+    : new LlmNetwork("ไม่มีโมเดลที่ใช้ได้บน OpenRouter ในขณะนี้");
+}
+
+/** Model-level failures worth retrying with another model. */
+function shouldFallback(err: LlmHttpError): boolean {
+  if (err.status === 404 || err.status === 429) return true;
+  return /no endpoints found|not a valid model|does not exist|model.*unavailable/i.test(
+    err.detail,
+  );
 }
 
 // ---------- OpenAI-compatible caller (shared by all providers) ----------
@@ -128,7 +171,6 @@ interface CompatibleCallArgs {
   name: ProviderId;
   url: string;
   apiKey: string;
-  apiKeyHeader: "Authorization" | "x-api-key";
   messages: ChatMessage[];
   options: ChatOptions;
   model: string;
@@ -153,13 +195,9 @@ async function callOpenAICompatible(args: CompatibleCallArgs): Promise<ChatCompl
 
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
+    Authorization: `Bearer ${args.apiKey}`,
     ...args.extraHeaders,
   };
-  if (args.apiKeyHeader === "Authorization") {
-    headers.Authorization = `Bearer ${args.apiKey}`;
-  } else {
-    headers["x-api-key"] = args.apiKey;
-  }
 
   let response: Response;
   try {
