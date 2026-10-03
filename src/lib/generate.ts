@@ -84,7 +84,7 @@ function buildSystemPrompt(input: z.infer<typeof generateInput>): string {
 - ${styleRule}
 - อัตราส่วนภาพ: ${input.aspectRatio}
 - ตัวละคร ยานพาหนะ โลโก้ ชุดสี แสง และบรรยากาศหลัก ต้อง "ล็อกตัวตน" — เขียนคำอธิบายเอกลักษณ์ซ้ำใน promptEn ของทุกฉากด้วยถ้อยคำเดิม (เช่น ยี่ห้อรถ สี โลโก้ ป้ายทะเบียน ใบหน้า เครื่องแบบ) เพื่อให้ภาพ/คลิปชุดเดียวกันต่อกันได้
-- promptEn: ภาษาอังกฤษ ละเอียด 60–130 คำ ครอบคลุม องค์ประกอบ แสง มุมกล้อง เลนส์ อารมณ์ คุณภาพ (cinematic, 8k, photoreal where relevant) และการเคลื่อนไหว (ถ้าเป็นวิดีโอ)
+- promptEn: ภาษาอังกฤษ ละเอียด 60–130 คำ ครอบคลุม องค์ประกอบ แสง มุมกล้อง เลนส์ อารมณ์ คุณภาพ (cinematic, 8k, photoreal where relevant) — ส่วนการเคลื่อนไหว/คลิปให้พูดถึงเฉพาะโหมดวิดีโอเท่านั้น
 - promptTh: ภาษาไทย เป็น "คำสั่งวางในแชทได้ทันที" น้ำเสียงสุภาพแบบผู้ใช้ไทย
 - titleTh / descriptionTh / continuityNote / logline เป็นภาษาไทย
 - logline: สรุปทั้งชุด 1 ประโยค
@@ -103,7 +103,7 @@ function buildSystemPrompt(input: z.infer<typeof generateInput>): string {
 - ถ้าฉากนี้ต่อจากคลิปก่อนหน้า: promptTh ขึ้นต้นด้วย
   "จากคลิปวีดีโอนี้ ช่วยสร้างวีดีโอต่อเนื่องตามจินตนาการให้หน่อยครับ." ตามด้วยเหตุการณ์ใหม่ที่เกิดต่อจากเฟรมสุดท้าย
 
-promptEn ของทุกฉากต้องบอกชัด:
+promptEn ของทุกฉากต้องบอกชัด (ทุกฉากเป็นวิดีโอ — ต้องมีการเคลื่อนไหวของกล้องและ/หรือตัวละครทุกฉาก):
 - "continue seamlessly from the last frame of the previous clip" (ยกเว้นฉาก 1 ที่เริ่มจากภาพนิ่ง — ใช้ image-to-video: เริ่มจากภาพนี้ แล้วค่อยขยับ)
 - สำหรับฉากต่อเนื่อง: ระบุว่าผลลัพธ์ควรเป็น "one continuous ~20 second video that includes the previous clip at the start, then extends it"
 - camera move, weather, vehicle/character action, sound/dialogue ถ้ามี
@@ -119,10 +119,17 @@ continuityNote: อธิบายสั้นๆ ว่าฉากนี้ต
   return `${identity}
 
 โหมดรูปภาพ — สตอรี่บอร์ดภาพนิ่งทีละใบ
+- ทุกฉากคือ "ภาพนิ่งเฟรมเดียว" (single still frame) ไม่ใช่คลิป — อธิบายเหมือนถ่ายภาพนิ่งด้วยชัตเตอร์ความเร็วสูง
+- ห้ามใส่ใน promptEn และ promptTh เด็ดขาด:
+  • การเคลื่อนที่ของกล้อง เช่น camera pan / zoom / dolly / tracking / orbit / push in / pull back / handheld follow
+  • การเล่าต่อเนื่องเป็นเวลา เช่น then, as it moves, gradually, starts to, begins to, while driving
+  • ความยาวคลิป (วินาที) เสียง คำบรรยายเสียง หรือคำว่า video / clip
+- ถ้าฉากมีแอ็กชัน ให้เลือก "จังหวะหยุดนิ่งกลางแอ็กชัน" มา 1 ช่วง (frozen moment เช่น น้ำกระเซ็นกลางอากาศ ล้อพรมฝุ่น เส้นผมปลิว) แล้วบรรยายเป็นภาพนิ่งของช่วงเวลานั้น
+- เล่าการเดินเรื่องใส่ descriptionTh / continuityNote เท่านั้น ห้ามยัดลำดับเหตุการณ์ลงใน prompt
 - promptTh ฉากแรกขึ้นต้น "ช่วยสร้างรูปภาพตามจินตนาการให้หน่อยครับ." (ถ้ามีรูปต้นฉบับ ให้ขึ้นต้น "จากรูปภาพนี้ ช่วยสร้างรูปภาพต่อเนื่องตามจินตนาการให้หน่อยครับ.")
 - ฉากถัดไปขึ้นต้น "ช่วยสร้างรูปภาพต่อเนื่องจากภาพก่อนหน้าให้หน่อยครับ."
 - promptEn เป็น text-to-image ที่สมบูรณ์ในตัว (สร้างแยกใบได้) พร้อม identity lock
-- มุมกล้องหลากหลาย: wide, close-up, low angle, over-shoulder, aerial ตามจังหวะเรื่อง
+- มุมกล้องหลากหลาย: wide, close-up, low angle, over-shoulder, aerial ตามจังหวะเรื่อง (มุมกล้อง = จุดยืนของกล้องนิ่งๆ ไม่ใช่การเคลื่อนกล้อง)
 - continuityNote: ความสัมพันธ์กับภาพก่อนหน้า`;
 }
 
