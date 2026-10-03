@@ -44,6 +44,7 @@ export interface HistoryItem extends SceneBundle {
 }
 
 export const STYLE_OPTIONS = [
+  { value: "auto", label: "ตามสื่อต้นทาง" },
   { value: "cinematic", label: "ซีนีมาติกสมจริง" },
   { value: "documentary", label: "สารคดี / ภาพจริง" },
   { value: "anime", label: "อนิเมะญี่ปุ่น" },

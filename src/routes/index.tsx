@@ -73,7 +73,7 @@ function StudioPage() {
   const [idea, setIdea] = useState("");
   const [extraDetails, setExtraDetails] = useState("");
   const [sceneCount, setSceneCount] = useState(10);
-  const [style, setStyle] = useState("cinematic");
+  const [style, setStyle] = useState("auto");
   const [aspectRatio, setAspectRatio] = useState("16:9");
   const [images, setImages] = useState<string[]>([]);
   const [mediaKind, setMediaKind] = useState<"image" | "video" | null>(null);
@@ -170,7 +170,7 @@ function StudioPage() {
       setIdea(
         "ขบวนรถกระบะขนส่งขาวโลโก้ Phaopanya Transport (มาสคอตหมวกตัวตลก) แล่นฝ่าฝนและน้ำท่วม ต้องไปส่งของให้ถึงตามนัด ไม่ว่าพายุจะหนักแค่ไหน",
       );
-      setStyle("cinematic");
+      setStyle("auto");
       setAspectRatio("16:9");
       setSceneCount(10);
     } catch {
@@ -511,6 +511,11 @@ function StudioPage() {
                 </button>
               ))}
             </div>
+            {style === "auto" && (
+              <p className="text-xs text-muted-foreground mt-2 leading-relaxed">
+                วิเคราะห์สไตล์จากรูป/คลิปที่อัปโหลด แล้วล็อกทุกอย่างไว้ในพร้อมต์ — วัสดุ/เทคนิค (เช่น ดินเหนียว, อนิเมะ), พาเลตสี, แสง, โลโก้ และข้อความบนป้าย ถ้าไม่ได้อัปโหลดสื่อ AI จะเลือกสไตล์ที่เหมาะกับเรื่องให้เอง
+              </p>
+            )}
           </div>
 
           <div>
